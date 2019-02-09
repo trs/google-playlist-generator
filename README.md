@@ -35,7 +35,7 @@ Create a settings.ini file and place the device_id for your oauth session in the
 
 Run the script: `python3 google_playlist_generator.py`
 
-Check your Google Play Music app. You should see the playlists generated in your music library within a few seconds. The playlists may appear empty for a few minutes, but will fill in. Once finished, you can manually download them all to your device by tapping the 3 vertica dots next to the playlist and choosing "Download".
+Check your Google Play Music app. You should see the playlists generated in your music library within a few seconds. The playlists may appear empty for a few minutes, but will fill in. Once finished, you can manually download them all to your device by tapping the 3 vertical dots next to the playlist and choosing "Download".
 
 **Caution:** neither this script nor the underlying gmusicapi is a supported Google API. Use at your own risk.
 
