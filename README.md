@@ -1,4 +1,4 @@
-#### Google Play Music Playlist Generator
+## Google Play Music Playlist Generator
 
 ### What?
 This is a script to generate a series of Google Play Music playlists containing every song in a library.
@@ -10,7 +10,7 @@ This script exists to work around some annoying limitations in the Google Play M
 
 2. I prefer having a local copy of all my music on my phone. I have limited data plan and don't always have good cell reception for streaming.
 
-3. I use google home devices to listen to music at home. Usually I would drive this process via my phone (it's easier than voice commands), but not always.
+3. I use google home devices to listen to music at home. Usually I drive this process via my phone (it's easier than voice commands), but not always.
 
 Unfortunately, there is no seamless way to meet all my needs. To put tracks on my phone, I could manually copy files from my PC to my phone, or rely on google play music's caching mechanism. Neither option works great.
 
@@ -29,7 +29,7 @@ This script uses gmusicapi to generate a series of playlists containing all song
 ### How?
 First, acquire gmusicapi. I tested with version 12: `pip install gmusicapi==12.0.0`
 
-Next, you must establish an oauth2 session and acquire a device id. Refer to [gmusicapi documentation][https://unofficial-google-music-api.readthedocs.io/en/latest/reference/mobileclient.html#setup-and-login] for details.
+Next, you must establish an oauth2 session and acquire a device id. Refer to [gmusicapi documentation](https://unofficial-google-music-api.readthedocs.io/en/latest/reference/mobileclient.html#setup-and-login) for details.
 
 Create a settings.ini file and place your device_id in there. Refer to settings.example.ini for details.
 
