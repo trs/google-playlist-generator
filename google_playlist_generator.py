@@ -1,118 +1,87 @@
 from datetime import datetime
 from gmusicapi import Mobileclient
+from configparser import RawConfigParser
 
-class PlaylistGenerator:
+MAX_PLAYLIST_SIZE = 1000
+SETTINGS_FILE = 'settings.ini'
+SECTION = 'google_playlist_generator'
 
-    def __init__(self, device_id, min_track_date, is_dry_run=False, do_logging=True):
-        self.min_track_date = min_track_date
-        self.is_dry_run = is_dry_run
-        self.do_logging = do_logging
-        
-        self.api = Mobileclient()
-        self.api.oauth_login(device_id)      
+config = RawConfigParser()
+config.read(SETTINGS_FILE)
 
-        self.playlist_tracks = []
-        self.playlist_track_count = 0
-        self.playlist_count = 0
-        self.total_track_count = 0
+device_id = config.get(SECTION, 'device_id')
+playlist_name = config.get(SECTION, 'playlist_name')
 
-        
-    def generate_playlists(self, playlist_prefix, playlist_suffix, max_tracks_per_playlist, since):
+def get_api():
+	global device_id
+	api = Mobileclient()
 
-        self.library = self.api.get_all_songs(incremental=True,
-                                              include_deleted=None)
-               
-        for partial_tracklist in self.library:
-            for track in partial_tracklist:
-                self._add_track(track)
-                if(self.playlist_track_count == max_tracks_per_playlist):
-                    self._finish_current_playlist(playlist_prefix, playlist_suffix)
-            
-        if (self.playlist_track_count > 0):
-            self._log('Have some tracks left over; making smaller playlist\n')
-            self._finish_current_playlist(playlist_prefix, playlist_suffix)
+	if device_id.strip() == '':
+		creds = api.perform_oauth(None, True)
+		api.oauth_login(Mobileclient.FROM_MAC_ADDRESS, creds)
 
-        self._log('Done; created '
-                  + str(self.playlist_count)
-                  + ' lists with '
-                  + str(self.total_track_count)
-                  + ' tracks total\n')
+		devices = api.get_registered_devices()
+		device_id = devices[0]["id"]
+		
+		config.set(SECTION, 'device_id', device_id)
+	else:
+		api.oauth_login(device_id)
 
+	return api
 
-    def _finish_current_playlist(self, prefix, suffix):
-        name = (prefix + '_' + str(self.total_track_count - self.playlist_track_count) 
-                + '_' + str(self.total_track_count - 1) + suffix)
-        
-        self._log('Done with playlist ' + name + '\n')
+def purge_existing_playlists(api):
+	global playlist_name
+	all_playlists = api.get_all_user_playlist_contents()
+	generated_playlists = list(filter(lambda p: p['name'].startswith(playlist_name), all_playlists))
 
-        if not self.is_dry_run:
+	for playlist in generated_playlists:
+		for track in playlist['tracks']:
+			api.remove_entries_from_playlist(track['id'])
 
-            self._log('Uploading playlist ' + name + ' with '
-                      + str(len(self.playlist_tracks)) + ' tracks\n')
-            
-            playlist_id = self.api.create_playlist(name)
-            results = self.api.add_songs_to_playlist(
-                playlist_id, self.playlist_tracks)
-            
-            self._log('Upload has ' + str(len(results))
-                      + ' playlist entries; first one is:'
-                      + results[0])
+	return list(map(lambda p: p['id'], generated_playlists))
 
-        self.playlist_tracks.clear()
-        self.playlist_count += 1
-        self.playlist_track_count = 0
-        
+def get_all_song_chunks(api):
+	song_chunk = []
+	for song in api.get_all_songs():
+		song_chunk.append(song['id'])
+		if len(song_chunk) == MAX_PLAYLIST_SIZE:
+			yield song_chunk
+			song_chunk = []
 
-    def _add_track(self, track):
-        track_date = track['creationTimestamp']
-        track_date = datetime.utcfromtimestamp(int(track_date) / 1000000)
-        if track_date > self.min_track_date:
-            #self._log('track is new; adding it');                 
-            self.playlist_tracks.append(track['id'])
-            self.total_track_count += 1
-            self.playlist_track_count += 1
+	if len(song_chunk) > 0:
+		yield song_chunk
+		song_chunk = []
 
-    def _log(self, text):
-        if(self.do_logging):
-            print(text)
+def get_playlist_name(playlist_num):
+	global playlist_name
+	return playlist_name + ' (' + str(playlist_num) + ')'
 
-            
+def get_available_playlist(api, playlist_num, available_playlists):
+	name = get_playlist_name(playlist_num)
+
+	if len(available_playlists) > 0:
+		playlist_id = available_playlists.pop(0)
+		api.edit_playlist(playlist_id, new_name=name)
+		return playlist_id
+	else:
+		return api.create_playlist(name)
+
 if __name__ == '__main__':
+	api = get_api()
 
-    from configparser import RawConfigParser
-    config = RawConfigParser()
-    config.read('settings.ini')
-    section = 'google_playlist_generator'
+	available_playlists = purge_existing_playlists(api)
+	playlist_num = 1
 
-    device_id = config.get(section, 'device_id')
+	for song_chunk in get_all_song_chunks(api):
+		playlist_id = get_available_playlist(api, playlist_num, available_playlists)
+		
+		api.add_songs_to_playlist(playlist_id, song_chunk)
 
-    last_sync_time = config.get(section, 'last_sync_time')
-    update_last_sync_time = config.getboolean(section, 'update_last_sync_time')
-    
-    if last_sync_time.strip() != '':
-        last_sync_time = datetime.strptime(last_sync_time, '%Y-%m-%d %H:%M:%S.%f')
-    else:
-        last_sync_time = datetime.utcfromtimestamp(0)
+		playlist_num += 1
 
-    
-    is_dry_run = config.getboolean(section, 'is_dry_run')
-    do_logging = config.getboolean(section, 'do_logging')
+	if len(available_playlists) > 0:
+		for remaining_playlist in available_playlists:
+			api.delete_playlist(remaining_playlist)
 
-    pg = PlaylistGenerator(device_id, last_sync_time, is_dry_run, do_logging)
-
-    now = datetime.now()
-    playlist_prefix = now.strftime(config.get(section, 'playlist_prefix'))
-    playlist_suffix = now.strftime(config.get(section, 'playlist_suffix'))
-    tracks_per_playlist = config.getint(section, 'tracks_per_playlist')
-
-    pg.generate_playlists(playlist_prefix, playlist_suffix, tracks_per_playlist, last_sync_time)
-
-    if update_last_sync_time:
-        if do_logging:
-            print('Updating last_sync_time to %s' % now)
-            
-        config.set(section, 'last_sync_time', now)
-        
-        if not is_dry_run:
-            with open('settings.ini', 'w') as configfile:
-                config.write(configfile) #goodbye comments :(
+	with open(SETTINGS_FILE, 'w') as configfile:
+		config.write(configfile)
